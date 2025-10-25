@@ -1,0 +1,46 @@
+# Python cache files
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+
+# Virtual environment
+venv/
+env/
+ENV/
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Test images (keep test_image.jpg for testing but ignore generated ones)
+uploads/*.jpg
+uploads/*.png
+uploads/*.jpeg
+uploads/*.gif
+uploads/*.bmp
+uploads/*.tiff
+uploads/*.webp
+
+# But keep the test_image.jpg for testing
+!uploads/test_image.jpg
+
+# Log files
+*.log
+
+# Environment variables
+.env
+.env.local
+.env.production
+
+# Temporary files
+*.tmp
+*.temp
