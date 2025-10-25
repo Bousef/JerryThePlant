@@ -208,21 +208,15 @@ def receive_sensor_data():
             with open(sensor_file, 'w') as f:
                 json.dump(all_sensor_data, f, indent=2)
         
-        # Generate AI response and status
-        ai_response = generate_ai_response(sensor_data)
+        # Determine status color based on sensor readings
         status_color = determine_status_color(sensor_data)
         
-        response_body = {
-            'ai_reply': ai_response,
-            'status_color': status_color,
-            'sensor_data_id': sensor_data['id'],
-            'timestamp': sensor_data['timestamp']
-        }
+        # Generate simple message for TTS
+        message = generate_simple_message(sensor_data, status_color)
         
         return jsonify({
-            'success': True,
-            'message': 'Sensor data received and processed',
-            'response_body': response_body
+            'status_color': status_color,
+            'message': message
         }), 200
         
     except Exception as e:
@@ -261,6 +255,33 @@ def generate_ai_response(sensor_data):
         responses.append("🌱 Soil moisture looks healthy.")
     
     return " ".join(responses)
+
+def generate_simple_message(sensor_data, status_color):
+    """Generate a simple message for TTS based on sensor readings"""
+    temp = sensor_data['temperature']
+    humidity = sensor_data['humidity']
+    soil = sensor_data['soil_moisture']
+    
+    if status_color == 'green':
+        return "Plant health is good. All sensors reading normal."
+    elif status_color == 'yellow':
+        if temp < 18 or temp > 28:
+            return "Temperature needs attention. Check plant environment."
+        elif humidity < 40:
+            return "Humidity is low. Consider misting the plant."
+        elif soil < 30:
+            return "Soil is dry. Time to water your plant."
+        else:
+            return "Plant needs some attention. Check sensor readings."
+    else:  # red
+        if temp < 15 or temp > 32:
+            return "Critical temperature alert. Immediate action needed."
+        elif humidity < 30:
+            return "Very low humidity. Plant is stressed."
+        elif soil < 20:
+            return "Plant is severely dehydrated. Water immediately."
+        else:
+            return "Critical plant health issue detected."
 
 def determine_status_color(sensor_data):
     """Determine status color based on sensor readings"""
@@ -350,16 +371,15 @@ def store_metrics():
 
 @app.route('/response-body', methods=['GET'])
 def get_response_body():
-    """Get the latest response body with AI reply and status color"""
+    """Get the latest response body with status color"""
     try:
         # Get the latest sensor data
         sensor_file = os.path.join(UPLOAD_FOLDER, 'sensor_data.json')
         
         if not os.path.exists(sensor_file):
             return jsonify({
-                'error': 'No sensor data available',
-                'ai_reply': 'No recent sensor data to analyze.',
-                'status_color': 'yellow'
+                'status_color': 'yellow',
+                'message': 'No sensor data available'
             }), 404
         
         with open(sensor_file, 'r') as f:
@@ -367,32 +387,23 @@ def get_response_body():
         
         if not all_sensor_data:
             return jsonify({
-                'error': 'No sensor data available',
-                'ai_reply': 'No recent sensor data to analyze.',
-                'status_color': 'yellow'
+                'status_color': 'yellow',
+                'message': 'No sensor data available'
             }), 404
         
         # Get the most recent sensor reading
         latest_sensor_data = all_sensor_data[-1]
         
-        # Generate AI response and status
-        ai_response = generate_ai_response(latest_sensor_data)
+        # Determine status color
         status_color = determine_status_color(latest_sensor_data)
         
-        response_body = {
-            'ai_reply': ai_response,
-            'status_color': status_color,
-            'sensor_data_id': latest_sensor_data['id'],
-            'timestamp': latest_sensor_data['timestamp'],
-            'sensor_readings': {
-                'temperature': latest_sensor_data['temperature'],
-                'pressure': latest_sensor_data['pressure'],
-                'humidity': latest_sensor_data['humidity'],
-                'soil_moisture': latest_sensor_data['soil_moisture']
-            }
-        }
+        # Generate simple message for TTS
+        message = generate_simple_message(latest_sensor_data, status_color)
         
-        return jsonify(response_body), 200
+        return jsonify({
+            'status_color': status_color,
+            'message': message
+        }), 200
         
     except Exception as e:
         return jsonify({'error': f'Failed to get response body: {str(e)}'}), 500
@@ -513,7 +524,7 @@ def home():
             'response_body': {
                 'path': '/response-body',
                 'method': 'GET',
-                'description': 'Get latest AI response and status'
+                'description': 'Get latest status and sensor readings'
             }
         },
         'storage': {
