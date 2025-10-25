@@ -4,15 +4,24 @@ import os
 import uuid
 from datetime import datetime
 import json
+import cloudinary
+import cloudinary.uploader
 
 app = Flask(__name__)
+
+# Cloudinary configuration
+cloudinary.config(
+    cloud_name=os.environ.get('CLOUDINARY_CLOUD_NAME'),
+    api_key=os.environ.get('CLOUDINARY_API_KEY'),
+    api_secret=os.environ.get('CLOUDINARY_API_SECRET')
+)
 
 # Configuration
 UPLOAD_FOLDER = 'uploads'
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'bmp', 'tiff', 'webp'}
 MAX_FILE_SIZE = 16 * 1024 * 1024  # 16MB
 
-# Ensure upload directory exists
+# Ensure upload directory exists (for local development)
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 def allowed_file(filename):
