@@ -5,3 +5,4 @@ python-dotenv>=1.0.0
 requests>=2.31.0
 supabase>=2.0.0
 postgrest>=0.13.0
+pyttsx3>=2.90

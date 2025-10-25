@@ -214,9 +214,13 @@ def receive_sensor_data():
         # Generate simple message for TTS
         message = generate_simple_message(sensor_data, status_color)
         
+        # Generate WAD audio file
+        audio_file_path = generate_wad_file(message, sensor_data['id'])
+        
         return jsonify({
             'status_color': status_color,
-            'message': message
+            'message': message,
+            'audio_file': audio_file_path
         }), 200
         
     except Exception as e:
@@ -282,6 +286,53 @@ def generate_simple_message(sensor_data, status_color):
             return "Plant is severely dehydrated. Water immediately."
         else:
             return "Critical plant health issue detected."
+
+def generate_wad_file(message, sensor_id):
+    """Generate a WAD audio file for the message using TTS"""
+    try:
+        import pyttsx3
+        import os
+        
+        # Create audio directory if it doesn't exist
+        audio_dir = os.path.join(UPLOAD_FOLDER, 'audio')
+        if not os.path.exists(audio_dir):
+            os.makedirs(audio_dir)
+        
+        # Generate unique filename
+        audio_filename = f"sensor_{sensor_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.wav"
+        audio_path = os.path.join(audio_dir, audio_filename)
+        
+        # Initialize TTS engine
+        engine = pyttsx3.init()
+        
+        # Configure TTS settings
+        engine.setProperty('rate', 150)  # Speed of speech
+        engine.setProperty('volume', 0.9)  # Volume level
+        
+        # Generate audio file
+        engine.save_to_file(message, audio_path)
+        engine.runAndWait()
+        
+        # Return relative path for API response
+        return f"/audio/{audio_filename}"
+        
+    except ImportError:
+        # Fallback: create a simple text file if pyttsx3 is not available
+        audio_dir = os.path.join(UPLOAD_FOLDER, 'audio')
+        if not os.path.exists(audio_dir):
+            os.makedirs(audio_dir)
+        
+        audio_filename = f"sensor_{sensor_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
+        audio_path = os.path.join(audio_dir, audio_filename)
+        
+        with open(audio_path, 'w') as f:
+            f.write(message)
+        
+        return f"/audio/{audio_filename}"
+    
+    except Exception as e:
+        print(f"Error generating audio file: {e}")
+        return None
 
 def determine_status_color(sensor_data):
     """Determine status color based on sensor readings"""
@@ -369,6 +420,20 @@ def store_metrics():
     except Exception as e:
         return jsonify({'error': f'Metrics storage failed: {str(e)}'}), 500
 
+@app.route('/audio/<filename>')
+def serve_audio(filename):
+    """Serve audio files"""
+    try:
+        audio_dir = os.path.join(UPLOAD_FOLDER, 'audio')
+        audio_path = os.path.join(audio_dir, filename)
+        
+        if os.path.exists(audio_path):
+            return send_file(audio_path, as_attachment=True)
+        else:
+            return jsonify({'error': 'Audio file not found'}), 404
+    except Exception as e:
+        return jsonify({'error': f'Failed to serve audio: {str(e)}'}), 500
+
 @app.route('/response-body', methods=['GET'])
 def get_response_body():
     """Get the latest response body with status color"""
@@ -400,9 +465,13 @@ def get_response_body():
         # Generate simple message for TTS
         message = generate_simple_message(latest_sensor_data, status_color)
         
+        # Generate WAD audio file
+        audio_file_path = generate_wad_file(message, latest_sensor_data['id'])
+        
         return jsonify({
             'status_color': status_color,
-            'message': message
+            'message': message,
+            'audio_file': audio_file_path
         }), 200
         
     except Exception as e:
