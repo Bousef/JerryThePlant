@@ -1,0 +1,11 @@
+[
+  {
+    "id": "4a2f47d2-653e-46de-a317-3410a30ade19",
+    "timestamp": "2025-10-25T01:42:43.606360",
+    "temperature": 19.56,
+    "pressure": 991.63,
+    "humidity": 72.62,
+    "soil_moisture": 39.02,
+    "source": "raspberry_pi"
+  }
+]

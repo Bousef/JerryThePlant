@@ -1,0 +1,13 @@
+[
+  {
+    "id": "b4ad78cc-b1e1-4f0b-a644-9f436c6a53db",
+    "timestamp": "2025-10-25T01:42:45.626487",
+    "metrics": {
+      "plant_growth_rate": 0.25,
+      "leaf_count": 16,
+      "health_score": 62.5,
+      "days_since_watering": 6
+    },
+    "source": "api_request"
+  }
+]

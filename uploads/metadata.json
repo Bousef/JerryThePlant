@@ -6,5 +6,13 @@
     "file_size": 825,
     "upload_timestamp": "2025-10-24T23:18:55.727796",
     "file_type": "jpg"
+  },
+  {
+    "id": "8e231cda-c591-4428-8995-93d462775d76",
+    "original_filename": "test_image.jpg",
+    "stored_path": "uploads/20251025_014247_7c17e144_test_image.jpg",
+    "file_size": 825,
+    "upload_timestamp": "2025-10-25T01:42:47.971656",
+    "file_type": "jpg"
   }
 ]
