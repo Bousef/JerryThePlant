@@ -8,12 +8,13 @@ import os
 app = Flask(__name__)
 
 # Cloudinary configuration
-# Use CLOUDINARY_URL if available, otherwise use individual variables
+# Use CLOUDINARY_URL (recommended for Vercel)
 cloudinary_url = os.environ.get('CLOUDINARY_URL')
 if cloudinary_url:
     cloudinary.config(cloudinary_url=cloudinary_url)
+    print("✅ Cloudinary configured with CLOUDINARY_URL")
 else:
-    # Fallback to individual variables
+    # Fallback to individual variables (for local development)
     cloud_name = os.environ.get('CLOUDINARY_CLOUD_NAME')
     api_key = os.environ.get('CLOUDINARY_API_KEY')
     api_secret = os.environ.get('CLOUDINARY_API_SECRET')
@@ -24,9 +25,10 @@ else:
             api_key=api_key,
             api_secret=api_secret
         )
+        print("✅ Cloudinary configured with individual variables")
     else:
         print("⚠️  Warning: Cloudinary credentials not found!")
-        print("   Set CLOUDINARY_URL or individual CLOUDINARY_* variables")
+        print("   Set CLOUDINARY_URL environment variable")
 
 # Configuration
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'bmp', 'tiff', 'webp'}
