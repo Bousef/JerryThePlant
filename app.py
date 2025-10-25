@@ -5,6 +5,7 @@ import uuid
 from datetime import datetime
 import json
 import random
+from supabase_config import supabase_storage
 
 app = Flask(__name__)
 
@@ -21,15 +22,18 @@ def allowed_file(filename):
     return '.' in filename and \
            filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
-def save_image_metadata(image_path, original_filename, file_size):
+def save_image_metadata(image_url, original_filename, file_size, blob_name=None, bucket=None):
     """Save metadata about the uploaded image"""
     metadata = {
         'id': str(uuid.uuid4()),
         'original_filename': original_filename,
-        'stored_path': image_path,
+        'image_url': image_url,
         'file_size': file_size,
         'upload_timestamp': datetime.now().isoformat(),
-        'file_type': original_filename.rsplit('.', 1)[1].lower()
+        'file_type': original_filename.rsplit('.', 1)[1].lower(),
+        'blob_name': blob_name,
+        'bucket': bucket,
+        'storage_type': 'supabase' if bucket and bucket != 'local' else 'local'
     }
     
     metadata_file = os.path.join(UPLOAD_FOLDER, 'metadata.json')
@@ -87,12 +91,39 @@ def upload_image():
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
         unique_filename = f"{timestamp}_{uuid.uuid4().hex[:8]}_{filename}"
         
-        # Save file
-        file_path = os.path.join(UPLOAD_FOLDER, unique_filename)
-        file.save(file_path)
+        # Read file data
+        file_data = file.read()
+        file.seek(0)  # Reset for potential local fallback
+        
+        # Determine content type
+        content_type = file.content_type or f"image/{filename.rsplit('.', 1)[1].lower()}"
+        
+        # Try Supabase Storage first
+        supabase_result = None
+        if supabase_storage.initialized:
+            supabase_result = supabase_storage.upload_image(
+                file_data, unique_filename, content_type
+            )
+        
+        # Fallback to local storage if Supabase fails
+        if not supabase_result:
+            print("📁 Using local storage fallback")
+            file_path = os.path.join(UPLOAD_FOLDER, unique_filename)
+            file.save(file_path)
+            supabase_result = {
+                'url': f"/uploads/{unique_filename}",
+                'file_path': unique_filename,
+                'bucket': 'local'
+            }
         
         # Save metadata
-        metadata = save_image_metadata(file_path, file.filename, file_size)
+        metadata = save_image_metadata(
+            supabase_result['url'], 
+            file.filename, 
+            file_size,
+            supabase_result['file_path'],
+            supabase_result['bucket']
+        )
         
         return jsonify({
             'success': True,
@@ -101,7 +132,9 @@ def upload_image():
             'filename': unique_filename,
             'original_filename': file.filename,
             'file_size': file_size,
-            'upload_timestamp': metadata['upload_timestamp']
+            'upload_timestamp': metadata['upload_timestamp'],
+            'image_url': supabase_result['url'],
+            'storage_type': 'supabase' if supabase_storage.initialized else 'local'
         }), 200
         
     except Exception as e:
@@ -147,26 +180,33 @@ def receive_sensor_data():
             'source': 'raspberry_pi'
         }
         
-        # Store sensor data locally (in production, this would go to a database)
-        sensor_file = os.path.join(UPLOAD_FOLDER, 'sensor_data.json')
-        
-        # Load existing sensor data or create new list
-        if os.path.exists(sensor_file):
-            with open(sensor_file, 'r') as f:
-                all_sensor_data = json.load(f)
+        # Store sensor data in Supabase or locally
+        if supabase_storage.initialized:
+            # Save to Supabase database
+            db_result = supabase_storage.save_sensor_data(sensor_data)
+            if db_result:
+                sensor_data['id'] = db_result['id']
         else:
-            all_sensor_data = []
-        
-        # Add new sensor data
-        all_sensor_data.append(sensor_data)
-        
-        # Keep only last 1000 readings to prevent file from growing too large
-        if len(all_sensor_data) > 1000:
-            all_sensor_data = all_sensor_data[-1000:]
-        
-        # Save updated sensor data
-        with open(sensor_file, 'w') as f:
-            json.dump(all_sensor_data, f, indent=2)
+            # Fallback to local storage
+            sensor_file = os.path.join(UPLOAD_FOLDER, 'sensor_data.json')
+            
+            # Load existing sensor data or create new list
+            if os.path.exists(sensor_file):
+                with open(sensor_file, 'r') as f:
+                    all_sensor_data = json.load(f)
+            else:
+                all_sensor_data = []
+            
+            # Add new sensor data
+            all_sensor_data.append(sensor_data)
+            
+            # Keep only last 1000 readings to prevent file from growing too large
+            if len(all_sensor_data) > 1000:
+                all_sensor_data = all_sensor_data[-1000:]
+            
+            # Save updated sensor data
+            with open(sensor_file, 'w') as f:
+                json.dump(all_sensor_data, f, indent=2)
         
         # Generate AI response and status
         ai_response = generate_ai_response(sensor_data)
@@ -357,6 +397,87 @@ def get_response_body():
     except Exception as e:
         return jsonify({'error': f'Failed to get response body: {str(e)}'}), 500
 
+@app.route('/images', methods=['GET'])
+def get_images():
+    """Get list of uploaded images with Supabase URLs"""
+    try:
+        metadata_file = os.path.join(UPLOAD_FOLDER, 'metadata.json')
+        
+        if not os.path.exists(metadata_file):
+            return jsonify({'images': [], 'count': 0}), 200
+        
+        with open(metadata_file, 'r') as f:
+            all_metadata = json.load(f)
+        
+        # Return images with Supabase URLs
+        images = []
+        for metadata in all_metadata:
+            # Handle both old and new metadata formats
+            image_url = metadata.get('image_url') or metadata.get('stored_path', '')
+            image_info = {
+                'id': metadata['id'],
+                'original_filename': metadata['original_filename'],
+                'image_url': image_url,
+                'file_size': metadata['file_size'],
+                'upload_timestamp': metadata['upload_timestamp'],
+                'file_type': metadata['file_type'],
+                'storage_type': metadata.get('storage_type', 'local')
+            }
+            images.append(image_info)
+        
+        return jsonify({
+            'images': images,
+            'count': len(images),
+            'supabase_enabled': supabase_storage.initialized
+        }), 200
+        
+    except Exception as e:
+        return jsonify({'error': f'Failed to get images: {str(e)}'}), 500
+
+@app.route('/images/<image_id>', methods=['DELETE'])
+def delete_image(image_id):
+    """Delete an image from Supabase Storage and metadata"""
+    try:
+        metadata_file = os.path.join(UPLOAD_FOLDER, 'metadata.json')
+        
+        if not os.path.exists(metadata_file):
+            return jsonify({'error': 'No images found'}), 404
+        
+        with open(metadata_file, 'r') as f:
+            all_metadata = json.load(f)
+        
+        # Find the image
+        image_metadata = None
+        for metadata in all_metadata:
+            if metadata['id'] == image_id:
+                image_metadata = metadata
+                break
+        
+        if not image_metadata:
+            return jsonify({'error': 'Image not found'}), 404
+        
+        # Delete from Supabase Storage if applicable
+        if image_metadata.get('storage_type') == 'supabase' and image_metadata.get('blob_name'):
+            success = supabase_storage.delete_image(image_metadata['blob_name'])
+            if not success:
+                return jsonify({'error': 'Failed to delete from Supabase Storage'}), 500
+        
+        # Remove from metadata
+        all_metadata = [m for m in all_metadata if m['id'] != image_id]
+        
+        # Save updated metadata
+        with open(metadata_file, 'w') as f:
+            json.dump(all_metadata, f, indent=2)
+        
+        return jsonify({
+            'success': True,
+            'message': 'Image deleted successfully',
+            'image_id': image_id
+        }), 200
+        
+    except Exception as e:
+        return jsonify({'error': f'Failed to delete image: {str(e)}'}), 500
+
 @app.route('/', methods=['GET'])
 def home():
     """Simple home endpoint"""
@@ -367,7 +488,17 @@ def home():
             'upload_image': {
                 'path': '/upload',
                 'method': 'POST',
-                'description': 'Upload plant images'
+                'description': 'Upload plant images to Supabase Storage'
+            },
+            'get_images': {
+                'path': '/images',
+                'method': 'GET',
+                'description': 'Get list of uploaded images with URLs'
+            },
+            'delete_image': {
+                'path': '/images/<image_id>',
+                'method': 'DELETE',
+                'description': 'Delete image from Supabase Storage'
             },
             'sensor_data': {
                 'path': '/sensor-data',
@@ -385,7 +516,11 @@ def home():
                 'description': 'Get latest AI response and status'
             }
         },
-        'storage': 'local',
+        'storage': {
+            'type': 'supabase' if supabase_storage.initialized else 'local',
+            'supabase_enabled': supabase_storage.initialized,
+            'database_url': supabase_storage.database_url if supabase_storage.initialized else None
+        },
         'timestamp': datetime.now().isoformat()
     })
 
@@ -395,10 +530,14 @@ if __name__ == '__main__':
     print(f"📁 Upload folder: {os.path.abspath(UPLOAD_FOLDER)}")
     print(f"📷 Allowed file types: {', '.join(ALLOWED_EXTENSIONS)}")
     print(f"📏 Max file size: {MAX_FILE_SIZE // (1024 * 1024)}MB")
-    print(f"☁️  Storage: Local")
+    print(f"☁️  Storage: {'Supabase' if supabase_storage.initialized else 'Local'}")
+    if supabase_storage.initialized:
+        print(f"🚀 Supabase URL: {supabase_storage.supabase_url}")
     print(f"🚀 Server starting on port {port}")
     print(f"📡 API endpoints:")
-    print(f"   • POST /upload - Upload plant images")
+    print(f"   • POST /upload - Upload plant images to Supabase")
+    print(f"   • GET /images - Get list of uploaded images")
+    print(f"   • DELETE /images/<id> - Delete image from Supabase")
     print(f"   • POST /sensor-data - Receive sensor data from Pi")
     print(f"   • POST /metrics - Store additional metrics")
     print(f"   • GET /response-body - Get AI response and status")
