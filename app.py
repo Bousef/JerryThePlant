@@ -4,17 +4,21 @@ import os
 import uuid
 from datetime import datetime
 import json
-import cloudinary
-import cloudinary.uploader
 
 app = Flask(__name__)
 
-# Cloudinary configuration
-cloudinary.config(
-    cloud_name=os.environ.get('CLOUDINARY_CLOUD_NAME'),
-    api_key=os.environ.get('CLOUDINARY_API_KEY'),
-    api_secret=os.environ.get('CLOUDINARY_API_SECRET')
-)
+# Optional Cloudinary configuration (for Vercel deployment)
+try:
+    import cloudinary
+    import cloudinary.uploader
+    cloudinary.config(
+        cloud_name=os.environ.get('CLOUDINARY_CLOUD_NAME'),
+        api_key=os.environ.get('CLOUDINARY_API_KEY'),
+        api_secret=os.environ.get('CLOUDINARY_API_SECRET')
+    )
+    CLOUDINARY_AVAILABLE = True
+except ImportError:
+    CLOUDINARY_AVAILABLE = False
 
 # Configuration
 UPLOAD_FOLDER = 'uploads'
@@ -115,12 +119,28 @@ def upload_image():
     except Exception as e:
         return jsonify({'error': f'Upload failed: {str(e)}'}), 500
 
+@app.route('/', methods=['GET'])
+def home():
+    """Simple home endpoint"""
+    return jsonify({
+        'service': 'PlantAI Image Storage API',
+        'status': 'running',
+        'endpoint': '/upload',
+        'method': 'POST',
+        'storage': 'local' if not CLOUDINARY_AVAILABLE else 'cloudinary',
+        'timestamp': datetime.now().isoformat()
+    })
+
 if __name__ == '__main__':
+    port = int(os.environ.get('PORT', 5001))
+    storage_type = 'Cloudinary' if CLOUDINARY_AVAILABLE else 'Local'
+    
     print(f"🌱 PlantAI Backend - Image Storage API")
     print(f"📁 Upload folder: {os.path.abspath(UPLOAD_FOLDER)}")
     print(f"📷 Allowed file types: {', '.join(ALLOWED_EXTENSIONS)}")
     print(f"📏 Max file size: {MAX_FILE_SIZE // (1024 * 1024)}MB")
-    print(f"🚀 Server starting on http://localhost:5001")
+    print(f"☁️  Storage: {storage_type}")
+    print(f"🚀 Server starting on port {port}")
     print(f"📡 API endpoint: POST /upload")
     print("=" * 50)
-    app.run(debug=True, host='0.0.0.0', port=5001)
+    app.run(debug=False, host='0.0.0.0', port=port)
